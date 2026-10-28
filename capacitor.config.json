@@ -1,0 +1,9 @@
+{
+  "appId": "com.clutchkit.app",
+  "appName": "ClutchKit",
+  "webDir": "www",
+  "backgroundColor": "#121214",
+  "android": {
+    "allowMixedContent": false
+  }
+}

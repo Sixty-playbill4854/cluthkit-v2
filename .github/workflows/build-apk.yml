@@ -1,0 +1,61 @@
+name: Build Android Debug APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Strip unneeded permissions (app is fully offline)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i '/android.permission.INTERNET/d' "$M"
+          sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$M"
+          sed -i 's|</manifest>|    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />\n</manifest>|' "$M"
+          cat "$M"
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK and list permissions
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          ls -lh "$APK"
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -n1)
+          "$AAPT" dump permissions "$APK" | tee perms.txt
+          if grep -q "android.permission.INTERNET" perms.txt; then echo "INTERNET permission present"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClutchKit-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
